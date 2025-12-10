@@ -1,146 +1,399 @@
-# Zombie Shooter: 90s-Style Handheld Reaction Game
+# Zombie Shooter – 90s-Style Handheld Reaction Game
 
-A 90s-era inspired handheld electronic game built with the Seeed Studio XIAO ESP32C3 and CircuitPython.  
-The game combines quick reactions, motion controls, and classic "Bop It"-style commands with a zombie survival theme.
+A 90s-style handheld electronic game built with the Seeed Studio **XIAO ESP32C3** and **CircuitPython**.  
+The game mixes fast reactions, motion aiming, sound input, a touch-shield, and zombies.
 
 > Platform: XIAO ESP32C3 + CircuitPython  
-> Display: SSD1306 128x64 OLED  
-> Sensors: ADXL345 Accelerometer, Rotary Encoder  
-> Feedback: NeoPixel RGB LED(s), Piezo Buzzer  
-> Power: LiPo Battery + On/Off Switch
+> Display: SSD1306 128×64 OLED  
+> Inputs: ADXL345 accelerometer, rotary encoder, trigger button, capacitive touch pad, sound sensor  
+> Outputs: NeoPixel RGB LED, piezo buzzer, vibration motor  
+> Power: LiPo battery + on/off switch
 
 ---
 
 ## How to Play
 
-### Boot & Splash Screen
+### 1. Power-On & Splash Screen
 
-- When you turn on the device, an **animated splash screen** appears:
-  - Title **"Zombie Shooter"** slides in.
-  - A short **boot melody** plays on the buzzer.
-  - A short story is displayed in multiple pages with a blinking `N` in the bottom-right.
-  - Press the button to advance through the story pages.
-- The splash screen **only plays on power-on**, not when restarting the game from Game Over.
+When the device is turned on:
 
-### Main Menu & Difficulty Selection
+- An animated story / splash screen is shown by `ui.show_boot_animation(display, btn)`.
+- This splash animation plays **only on power-up**, not when restarting after Game Over.
 
-- After the splash/story screens, the **main menu** appears.
-- Use the **Rotary Encoder** to move between difficulty options:
-  - `Easy`
-  - `Medium`
-  - `Hard`
-- Press the encoder button to **confirm** your difficulty.
-- Difficulty affects:
-  - Available time per move / per level.
-  - Speed and frequency of zombie actions.
-  - Number and complexity of required moves.
-
-### Game Loop & Levels
-
-- The game consists of **at least 10 levels** of increasing difficulty.
-- On each level, the player must perform **commands correctly within a time limit**.
-- The OLED displays:
-  - `Level: X`
-  - The **current move** or command (e.g. `RAISE SHIELD`, `TILT LEFT`, `SHOOT`, etc.)
-  - Current **score** (if scoring is enabled).
-- Failing to perform the correct move in time, or making the wrong move, triggers **Game Over**.
-
-Example ways difficulty increases across levels:
-
-- Shorter time limits.
-- More complex sequences of moves.
-- Faster / more frequent zombie threats.
-- More "T" (shield-only) zombies mixed into normal ones.
+After the splash, the game enters the **main menu**.
 
 ---
 
-## Player Moves & Inputs
+## Menus & Difficulty
 
-The game uses multiple kinds of player input to satisfy the "minimum four possible moves" requirement:
+The **rotary encoder** is used only outside of gameplay:
 
-1. **Rotate Encoder (Clockwise / Counterclockwise)**
-   - Used for:
-     - Menu navigation
-     - Difficulty selection
-     - Initial/Name input for high scores
-   - Can also be used as an in-game move (e.g. "SPIN DIAL").
+- Rotate to move between menu items.
+- Press the encoder button to confirm.
 
-2. **Encoder Button / Fire Button / Touch Pad**
-   - Used to:
-     - Confirm selections in menus
-     - **Shoot normal zombies** (fire action)
-   - When the game displays `SHOOT` or similar, the correct move is pressing this button.
+Main menu (`menu.main_menu`):
 
-3. **Accelerometer – Tilt Left / Tilt Right**
-   - Tilting the device left/right is detected using the **ADXL345 accelerometer**.
-   - Used as additional moves, such as:
-     - `TILT LEFT`
-     - `TILT RIGHT`
+- `PLAY` – start a new game.
+- `SCORES` – view the high-score leaderboard.
+- `SETTINGS` – change difficulty.
 
-4. **Accelerometer – Shield Up Gesture**
-   - Raising the device (or tilting it upward past a threshold) is interpreted as **"Shield Up"**.
-   - When a special "T" zombie is on screen, raising the shield can destroy **one** T-type zombie per activation.
+### Difficulty Settings
 
-These give you **more than four distinct move types**, satisfying the project requirements.
+From `menu.difficulty_menu` the player can choose:
 
----
+- `EASY`
+- `NORMAL`
+- `DIFFICULT`
 
-## Game States
+The selected difficulty affects:
 
-### In-Game
+- How many zombies can be on screen at once.
+- How quickly zombies spawn.
+- How long each zombie stays alive before it disappears and may damage the player.
 
-- OLED shows:
-  - Current **Level**
-  - Required **Move**
-  - **Timer** or feedback that time is running out
-  - Optional: Zombie icons / characters to visualize threats.
-- NeoPixel and Buzzer give feedback for correct/incorrect actions.
-
-### Game Over
-
-- Triggered when:
-  - Player fails to input the correct move in time, or
-  - Inputs the wrong move.
-- OLED displays a **Game Over screen** with:
-  - Final **Level** reached
-  - Final **Score** (if scoring is enabled)
-- From Game Over screen, the player can:
-  - Press the button or encoder to **restart the game**  
-    (without power cycling the device).
-
-### Game Win
-
-- If the player successfully completes **all levels**, a **Game Win screen** appears:
-  - Congratulatory message.
-  - Final score.
-- NeoPixels may show a **celebration effect** (e.g. color cycle).
-- Buzzer plays a **win melody**.
+For each difficulty, `ZOMBIE_LIFETIME_TABLE` defines the lifetime for levels 1–10  
+(shorter lifetimes at higher levels ⇒ harder).
 
 ---
 
-## Scoring & High Scores (Extra Credit)
+## One-Time Tutorial (3 Parts)
 
-> This section applies if you implement the extra credit features.
+The tutorial runs **once** after power-on, the first time the player chooses `PLAY`:
 
-### Scoring
+```python
+tutorial_shown = False
+...
+if not tutorial_shown:
+    show_tutorial(display)
+    tutorial_shown = True
+```
 
-- Each successfully completed level awards **points**.
-- Harder difficulties can award **more points per level**.
-- The score is:
-  - Displayed during the game (e.g. at the corner of the OLED).
-  - Displayed again on **Game Over** or **Game Win** screens.
+`show_tutorial(display)` contains 3 parts:
 
-### High Score Board
+### Tutorial 1/3 – Shooting Z
 
-- High scores are stored in a `scores.json` file on the XIAO’s internal flash.
-- After Game Over or Game Win:
-  - The game checks if the score is in the **top N** (e.g. top 5 or 10).
-  - If so, a **high score name entry screen** appears.
-- Player initials are entered using the **Rotary Encoder**:
-  - Rotate to select letters (A–Z, maybe symbols or space).
-  - Press to move to the next character.
-  - Typically 3-character initials (e.g. `AAA`, `BOB`).
-- The high score table can be viewed after each game and is preserved across power cycles.
+- **Part 1-A (text)**: Explains that you tilt to move the `+` crosshair and press the button to shoot `Z`.
+- **Part 1-B (practice)**:
+  - A `+` crosshair and one `Z` appear on a clean screen.
+  - The accelerometer (ADXL345) is read and filtered with an exponential moving average:
+
+    ```python
+    local_xf = local_alpha * x + (1 - local_alpha) * local_xf
+    local_yf = local_alpha * y + (1 - local_alpha) * local_yf
+    ```
+
+  - Filtered X/Y are mapped to screen coordinates; the crosshair follows your tilt.
+  - Pressing the trigger button checks if the crosshair is near the `Z`:
+    - Close enough → `hit_effect()` (NeoPixel green, beep, vibration).
+    - Miss → `miss_effect()` (NeoPixel red, different beep).
+
+### Tutorial 2/3 – S & Sound Sensor
+
+- **Part 2-A (text)**: Explains that when `S` appears you use **sound**, not aiming.
+- **Part 2-B (practice)**:
+  - A big `S` is shown on screen.
+  - The digital sound sensor on D3 is read:
+    - Quiet = 1, loud spike = 0
+  - A transition `1 → 0` while the buzzer is not active triggers:
+    - A beep and `hit_effect()` — simulating the destruction of `S` by a clap or shout.
+
+### Tutorial 3/3 – T & Shield Touch
+
+- **Part 3-A (text)**: Explains that when `T` appears, you touch the left pad to raise the shield.
+- **Part 3-B (practice)**:
+  - A simple scene with a `T` and text.
+  - Touching the **left capacitive pad** (D2) long enough:
+    - Calls `hit_effect()` and removes the T in the tutorial.
+    - Demonstrates the “shield vs T” mechanic.
+
+---
+
+## Fingerprint Unlock (Touch Pad)
+
+After the tutorial (if enabled by `FINGERPRINT_UNLOCK_ENABLED = True`),  
+a “fingerprint unlock” screen appears before entering the real game:
+
+```python
+if FINGERPRINT_UNLOCK_ENABLED:
+    fingerprint_unlock()
+    display.root_group = main_group
+```
+
+`fingerprint_unlock()`:
+
+- Shows text:
+
+  > Know: put your finger  
+  > on the left touch pad  
+  > when it glows green,  
+  > to unlock your weapon.
+
+- Sets the NeoPixel to a **dim green** `(0, 80, 0)` while waiting.
+- When the player touches the pad and holds it for `REQUIRED_HOLD = 0.5s`:
+  - The text changes to:
+
+    > Weapon unlocked!  
+    > Welcome back,  
+    > Zombie Hunter.  
+    > Press BTN to start
+
+  - NeoPixel changes to **bright green** `(0, 255, 0)`.
+- The player presses the button to continue to the main game.
+
+---
+
+## Game Structure
+
+### Levels & Timing
+
+- Each run contains **10 levels** per difficulty:
+
+  ```python
+  MAX_LEVEL = 10
+  GAME_DURATION = 10.0  # seconds per level
+  ```
+
+- Each level lasts exactly **10 seconds**.
+- If the player is still alive when the level timer reaches 0:
+  - If current level < 10 → advance to the next level.
+  - If current level == 10 → the player has cleared all levels.
+
+During gameplay the top of the OLED shows:
+
+- `S:<score>` – current score
+- `HP:<value>` – player health (max 3)
+- `T:<seconds>` – remaining time in the current level
+
+The bottom shows difficulty and level:
+
+- `E L1`, `N L4`, `D L7`, etc.
+
+### HP and Damage
+
+- `MAX_HP = 3`
+- When a zombie’s personal lifetime expires, `update_zombies()` checks the shield:
+  - If shield **not** active → HP decreases by 1.
+  - The zombie is removed.
+- When HP decreases:
+  - The HP label is updated.
+  - `damage_effect()` plays: NeoPixel orange flash + vibration + low-pitch beep.
+- If HP reaches 0:
+  - `hp_reached_zero = True`
+  - `running = False` → end of the game.
+
+---
+
+## Zombies & Player Moves
+
+There are three zombie types:
+
+- **Z** – standard zombie (shoot with crosshair + button)
+- **S** – sound zombie (destroy with sound)
+- **T** – shield zombie (destroy with touch shield)
+
+Spawn logic (`spawn_zombie`) selects Z/S/T probabilities based on:
+
+- Difficulty (`EASY`, `NORMAL`, `DIFFICULT`)
+- Current level index
+
+### In-Game Controls
+
+1. **Aim with Tilt (ADXL345)**  
+   - Crosshair `+` is always controlled by the accelerometer:
+
+     ```python
+     x_f = alpha * x + (1 - alpha) * x_f
+     y_f = alpha * y + (1 - alpha) * y_f
+     px = map_to_range(x_f, MIN_X, MAX_X, SCREEN_X_MIN, SCREEN_X_MAX)
+     py = map_to_range(-y_f, MIN_Y, MAX_Y, SCREEN_Y_MIN, SCREEN_Y_MAX)
+     ```
+
+   - `alpha = 0.2` for smooth movement (low-pass filter).
+   - Filtered values are mapped/clamped into the screen area and set as `crosshair.x` / `crosshair.y`.
+
+2. **Shoot (Trigger Button on D9)**  
+   - The trigger button is debounced by `update_button()`.
+   - When pressed and **shield is not active** (`can_shoot = True`):
+     - `fired_any_shot = True`
+     - `muzzle_flash()` is called (NeoPixel white flash).
+     - `find_hit_zombie(px, py)` tests if the crosshair overlaps a `Z`.
+       - If a `Z` is found:
+         - It is removed.
+         - Score increments, label updated.
+         - `hit_effect()` plays (green flashes, beep, vibration).
+       - If nothing / `S` / `T` is hit:
+         - `miss_effect()` plays (red flash, miss sound).
+
+   - If the button is pressed while the shield is up (`can_shoot = False`):
+     - The text area briefly shows `SHIELD UP!` and no shot is fired.
+
+3. **Sound Move (Sound Sensor on D3, for S)**  
+   - Each loop reads the digital sound sensor:
+     - Quiet: `sound_sensor.value == 1`
+     - Loud spike: `sound_sensor.value == 0`
+   - A `1 → 0` edge is detected:
+
+     ```python
+     sound_edge = (sound_last_state and (not cur_sound))
+     ```
+
+   - If `sound_edge` and the buzzer is not playing:
+     - One **S zombie** on screen is removed (loop breaks after the first).
+     - Score increases and `hit_effect()` is called.
+
+4. **Shield Move (Touch Pad on D2, for T)**  
+   - `shield_active = bool(touch.value)`; when true:
+     - `can_shoot = False` (cannot fire).
+     - A loop walks through `zombies[:]`:
+       - On the first alive `T` zombie:
+         - It is removed.
+         - Score increases.
+         - `hit_effect()` plays.
+         - Loop breaks → **one T per shield activation**.
+   - When shield is active and a zombie lifetime ends:
+     - The player does **not** lose HP (see `update_zombies`).
+
+These four moves — **tilt to aim**, **shoot button**, **sound**, and **shield touch** — are the player’s actual actions.
+
+---
+
+## Scoring & Leaderboard
+
+### Score
+
+- Each destroyed zombie (Z/S/T) adds 1 point.
+- Score label: `S:<value>` is updated whenever `game_score` changes.
+- Final score is shown on the Game Over or victory/clear screen.
+
+### Game Over & Clear
+
+At the end of the `while running` loop:
+
+- If the player survived all 10 levels → `cleared_all_levels = True`.
+- If HP reached 0 → `hp_reached_zero = True`.
+
+Then:
+
+1. **Boss Easter Egg (Clear All Levels)**  
+   If `cleared_all_levels` is `True`:
+
+   ```python
+   easter2.show_boss_easter(display, btn, buzzer)
+   ```
+
+   - Special animation of running through zombies and story text.
+   - Buzzer sound effects during this sequence.
+
+2. **No-Shot Easter Egg**  
+   After the game:
+
+   ```python
+   if not fired_any_shot:
+       easter.show_no_shot(display, btn, buzzer)
+       display.root_group = main_group
+       continue
+   ```
+
+   - If the player never fired a bullet in the whole run,  
+     a “peaceful player / no bullet fired” easter egg screen is shown instead of the normal Game Over.
+
+3. **Normal Game Over Screen**
+
+   If the run was not a no-shot easter egg:
+
+   ```python
+   show_game_over(display, game_score, hp_reached_zero)
+   ```
+
+   - Displays:
+     - `"YOU DIED"` if HP reached zero, or `"TIME UP"` otherwise.
+     - `Score: <value>`
+     - `BTN: CONTINUE`
+
+4. **High Score Entry & Leaderboard**
+
+   - Uses `score.py`:
+
+     ```python
+     if score.can_enter_leaderboard(game_score):
+         player_name = NameInput.enter_name(display, encoder, btn, max_len=3)
+         score.add_score(player_name, game_score)
+     ```
+
+   - `NameInput.enter_name` lets the player use the rotary encoder to select 3-character initials.
+   - Scores are stored in `scores.json` on the internal flash (no SD card).
+   - `show_leaderboard(display)` then shows the high score list:
+     - Up to several entries with rank, initials, and score.
+     - Encoder rotates to scroll if more entries exist.
+     - Press button to go back to main menu.
+
+The player can start a new game from the menu **without power-cycling**.
+
+---
+
+## NeoPixel Behavior
+
+A single NeoPixel on **D10** is used for clear color-coded feedback:
+
+- **Unlock Tutorial / Fingerprint Screen**
+  - Dim green `(0, 80, 0)` while waiting for touch.
+  - Bright green `(0, 255, 0)` when the weapon is successfully unlocked.
+
+- **Shield Tutorial (Part 3 practice)**  
+  - When the player successfully clears the T in the tutorial, a green flash + `hit_effect()` is used.
+
+- **Muzzle Flash (Shooting) – `muzzle_flash()`**
+  - Brief **white** `(255, 255, 255)` flash when the trigger is pressed.
+
+- **Hit Effect – `hit_effect()`**
+  - Two short **green** `(0, 255, 0)` flashes.
+  - Vibration motor on D8 pulses.
+  - A high-pitch beep plays.
+
+- **Miss Effect – `miss_effect()`**
+  - Single **red** `(255, 0, 0)` flash.
+  - Medium-pitch miss beep.
+
+- **Damage Effect – `damage_effect()`**
+  - **Orange** `(255, 50, 0)` flash.
+  - Vibration pulse and deeper tone.
+
+After each effect, the pixel is set back to `(0, 0, 0)` (off).
+
+> The NeoPixel uses multiple distinct colors (dim & bright green, white, red, orange),  
+> which clearly satisfies the requirement to use more than one color.
+
+---
+
+## Audio & Vibration
+
+### Buzzer (D7, PWM)
+
+The buzzer is driven by `pwmio.PWMOut` on D7:
+
+- `play_beep(freq, duration, volume)`:
+  - Sets `buzzer_active = True` during playback to prevent the sound sensor from falsely triggering.
+- **Game start sound**:
+
+  ```python
+  def game_start_sound():
+      play_beep(500, 0.08)
+      play_beep(750, 0.08)
+      play_beep(1000, 0.12)
+  ```
+
+  Called at the beginning of each game.
+
+- Different tones for:
+  - Hit (`hit_effect`)
+  - Miss (`miss_effect`)
+  - Damage (`damage_effect`)
+  - Tutorial confirmations and easter egg scenes.
+
+### Vibration Motor (D8)
+
+- Controlled by a digital output on D8:
+  - Pulses during `hit_effect()` and `damage_effect()` to give haptic feedback.
 
 ---
 
@@ -148,64 +401,46 @@ These give you **more than four distinct move types**, satisfying the project re
 
 ### ADXL345 Accelerometer
 
-- Connected via **I2C** on the same bus as the OLED (SCL/SDA).
+- Connected via I2C with the OLED.
+- Used only for **aiming** the crosshair.
+- The code uses an exponential moving average:
+
+  ```python
+  alpha = 0.2
+  x_f = alpha * x + (1 - alpha) * x_f
+  y_f = alpha * y + (1 - alpha) * y_f
+  ```
+
+- Then maps the smoothed values into a limited range `[MIN_X, MAX_X]` / `[MIN_Y, MAX_Y]` and finally into OLED pixel coordinates `[SCREEN_X_MIN, SCREEN_X_MAX]` / `[SCREEN_Y_MIN, SCREEN_Y_MAX]`.
+
+This provides proper filtering for the accelerometer as required.
+
+### Sound Sensor (D3)
+
+- Digital input with pull-up:
+  - Quiet: `1`
+  - Loud spike: `0`
+- A `1 → 0` transition triggers:
+  - Tutorial Part 2 success.
+  - In-game S-zombie kill (one `S` per edge).
+
+### Touch Pad (D2)
+
+- Digital input with pull-down.
 - Used for:
-  - Tilt left/right detection.
-  - "Shield Up" gesture (tilt up / raise).
-  - Optional shake-based moves.
+  - Fingerprint unlock.
+  - T-zombie shield move during gameplay.
 
-### Calibration / Filtering
+### Trigger Button (D9) & Encoder
 
-To satisfy the "proper calibration/filtering" requirement:
-
-- At boot, the accelerometer can be sampled multiple times to estimate a **baseline**.
-- A **moving average filter** is applied to the raw X/Y/Z values:
-  - E.g. using the last N samples to smooth out noise.
-- Thresholds for tilt and shield gestures are based on:
-  - Filtered signals.
-  - Clear, documented numeric thresholds (e.g. `x > THRESHOLD_TILT_RIGHT`).
+- Trigger button:
+  - Debounced by `update_button()` for reliable edge detection.
+- Rotary encoder:
+  - Implemented by `RotaryEncoder` class in `rotary_encoder.py`.
+  - Used for menus and name/initial selection.
 
 ---
 
-## NeoPixel Behavior
-
-NeoPixel LED(s) are used to enhance gameplay and give quick visual feedback:
-
-- **Game Start / Ready**  
-  - NeoPixel glows a calm color (e.g. blue or green).
-- **Waiting for Move**  
-  - NeoPixel shows a neutral or level-based color.
-- **Correct Move**  
-  - Brief flash of **green** or another positive color.
-- **Incorrect Move**  
-  - Flash red.
-- **Game Over**  
-  - Pulsing or blinking **red**.
-- **Game Win**  
-  - A short **rainbow sequence** or cycling multiple colors.
-
-> The NeoPixel uses **more than one color**, satisfying the requirement.
-
----
-
-## Audio (Buzzer)
-
-A piezo buzzer is driven by a PWM-capable GPIO pin to play simple tones and melodies:
-
-- **Boot Melody**  
-  - A short tune at power-on, matching the splash/story screen.
-- **Correct Move Tone**  
-  - A short positive beep or ascending tone.
-- **Incorrect Move / Game Over Tone**  
-  - A lower or dissonant tone.
-- **Game Win Melody**  
-  - A slightly longer celebratory tune.
-- **Easter Egg / Boss Sequence** (if implemented)  
-  - Custom tones during special animations (e.g. running through zombie horde).
-
-This covers the **“at least three events have tones”** extra credit requirement.
-
----
 
 ## Files & Project Structure
 
@@ -213,7 +448,7 @@ Suggested repository structure:
 
 ```text
 .
-├── code/
+├── codfiles/
 │   ├── code.py             # Main game loop, state machine, input handling
 │   ├── ui.py               # Splash screen, story pages, UI screens
 │   ├── menu.py             # Main menu and difficulty selection
@@ -222,7 +457,6 @@ Suggested repository structure:
 │   ├── scores.py           # Scoring and high score storage (scores.json)
 │   ├── name_input.py       # Rotary encoder-based name/initial input
 │   ├── rotary_encoder.py   # Rotary encoder helper class / driver
-│   └── demo.py             # Small test/demo scripts used during development
 │
 ├── lib/                    # CircuitPython libraries used by the game
 │   ├── adafruit_display_text/
@@ -231,13 +465,43 @@ Suggested repository structure:
 │   ├── i2cdisplaybus.mpy
 │   ├── neopixel.mpy
 │
-├── diagrams/
-│   ├── system_diagram.png  # system block diagram
-│   └── circuit_diagram.png # wiring diagram / schematic
+├── Documentation/
+│   ├── System Block Diagram.png  # system block diagram
+│   └── Final Circuit Diagrams.pdf # wiring diagram / schematic
 │
 ├── enclosure/
-│   ├── enclosure_photo_1.jpg
-│   ├── enclosure_photo_2.jpg
-│   └── stl_or_cad_files/   # optional: 3D models or drawings
+│   ├── 20251207_1.stl
+│   ├── 20251207_2.stl
 │
 └── README.md
+
+To run on the actual device, copy the contents of `code/` and `lib/` to the CIRCUITPY drive (with `code.py` at the root).
+
+---
+
+## Hardware & Enclosure Summary
+
+- Seeed Studio **XIAO ESP32C3** microcontroller  
+- **SSD1306 128×64 OLED** on I2C (shared with ADXL345)  
+- **ADXL345 accelerometer** (I2C)  
+- **Rotary encoder + push button** for menus & name input  
+- **Trigger button** (D9) for shooting  
+- **Capacitive touch pad** (D2) for shield/unlock  
+- **Digital sound sensor** (D3) for S-zombie move  
+- **NeoPixel RGB LED** (D10)  
+- **Piezo buzzer** on D7 (PWM)  
+- **Vibration motor** on D8  
+- **LiPo battery** and **on/off switch**  
+- All mounted on perfboard or a PCB using **female headers** so modules are removable.
+
+The enclosure:
+
+- Securely holds all electronics.
+- Exposes:
+  - USB-C port for the XIAO.
+  - On/off switch.
+  - OLED window.
+  - Openings for trigger, encoder, and touch pad.
+- Has a removable lid/side so the electronics can be accessed easily.
+- Any 3D-printed parts are **not yellow**, following the project constraints.
+

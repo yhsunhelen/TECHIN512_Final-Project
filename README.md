@@ -478,7 +478,7 @@ Suggested repository structure:
 To run on the actual device, copy the contents of `code/` and `lib/` to the CIRCUITPY drive (with `code.py` at the root).
 
 ---
-
+```
 ## Hardware & Enclosure Summary
 
 - Seeed Studio **XIAO ESP32C3** microcontroller  
